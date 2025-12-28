@@ -1,0 +1,41 @@
+name: vibes
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Data & Storage
+  sqflite: ^2.3.0
+  sqflite_common_ffi: ^2.3.0
+  path: ^1.8.3
+  excel: ^2.1.0
+  file_picker: ^8.0.0
+  path_provider: ^2.1.1
+  permission_handler: ^11.0.1
+  
+  # State Management
+  provider: ^6.1.1
+
+  # UI Helper (Standard in new projects)
+  cupertino_icons: ^1.0.8
+  
+  # Camera and ML Kit
+  camera: ^0.10.5+2
+  google_mlkit_text_recognition: ^0.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/ml/
