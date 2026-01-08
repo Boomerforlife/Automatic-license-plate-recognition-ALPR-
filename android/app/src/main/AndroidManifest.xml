@@ -5,6 +5,11 @@
         android:label="vibes"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        
+        <!-- ML Kit OCR Dependency -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
 
 
         <activity

@@ -89,7 +89,7 @@ class HomePage extends StatelessWidget {
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(success ? 'Logs exported successfully!' : 'Failed to export logs: $result'),
+                      content: Text(result),
                       backgroundColor: success ? Colors.green : Colors.red,
                     ),
                   );

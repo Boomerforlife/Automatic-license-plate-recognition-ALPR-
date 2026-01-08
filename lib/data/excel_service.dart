@@ -101,8 +101,9 @@ class ExcelService {
       }
 
       if (directory != null) {
-        String timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-        String fileName = 'EntryLogs_$timestamp.xlsx';
+        final now = DateTime.now();
+        String timestamp = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+        String fileName = 'PlateLogs_$timestamp.xlsx';
         String filePath = join(directory.path, fileName);
         
         File(filePath)

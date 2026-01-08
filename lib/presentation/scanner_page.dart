@@ -1,283 +1,192 @@
-import 'dart:async';
-import 'dart:io';
-import 'package:flutter/foundation.dart';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:vibes/data/database_helper.dart';
-import 'package:vibes/data/plate_validator.dart';
+import 'package:flutter/services.dart';
+import '../data/database_helper.dart';
+import '../utils/plate_validator.dart';
 
 class ScannerPage extends StatefulWidget {
   const ScannerPage({super.key});
 
   @override
-  _ScannerPageState createState() => _ScannerPageState();
+  State<ScannerPage> createState() => _ScannerPageState();
 }
 
 class _ScannerPageState extends State<ScannerPage> {
-  late CameraController _controller;
-  late Future<void> _initializeControllerFuture;
-  final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-  final DatabaseHelper _databaseHelper = DatabaseHelper.instance;
+  CameraController? _controller;
+  Future<void>? _initializeControllerFuture;
+  final TextRecognizer _textRecognizer = TextRecognizer();
+  late final DatabaseHelper _databaseHelper;
+  
   bool _isProcessing = false;
-  bool _isStreamRunning = false;
-  String _lastDetectedPlate = '';
-  DateTime? _lastDetectionTime;
-  static const int _cooldownSeconds = 3;
-  Color _flashColor = Colors.transparent;
-  bool _isCameraInitialized = false;
+  
+  // Viewfinder Settings
+  final GlobalKey _cameraPreviewKey = GlobalKey();
+  Rect? _scanWindowRect;
+  bool _isScanWindowInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    print('DEBUG: Initializing ScannerPage...');
+    _databaseHelper = DatabaseHelper.instance;
     _initializeCamera();
   }
 
   Future<void> _initializeCamera() async {
-    try {
-      print('DEBUG: Getting available cameras...');
-      final cameras = await availableCameras();
-      
-      if (cameras.isEmpty) {
-        throw Exception('No cameras found');
-      }
-      
-      print('DEBUG: Creating camera controller...');
-      _controller = CameraController(
-        cameras[0],
-        ResolutionPreset.medium, // Using medium for better performance
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.bgra8888,
-      );
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) return;
 
-      print('DEBUG: Initializing camera controller...');
-      _initializeControllerFuture = _controller.initialize();
-      
-      // Wait for initialization to complete
-      await _initializeControllerFuture.whenComplete(() {
-        if (mounted) {
-          setState(() {
-            _isCameraInitialized = true;
-          });
-          print('DEBUG: Camera controller initialized successfully');
-          
-          // Start image stream after initialization
-          if (_controller.value.isInitialized) {
-            _startImageStream();
-          } else {
-            print('WARNING: Camera controller not properly initialized');
-          }
-        }
+    _controller = CameraController(
+      cameras.first,
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    try {
+      _initializeControllerFuture = _controller!.initialize();
+      await _initializeControllerFuture;
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('Error initializing camera: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to initialize camera: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  void _onLayoutDone(_) {
+    final renderBox = _cameraPreviewKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null && !_isScanWindowInitialized) {
+      final size = renderBox.size;
+      // Define a 250x150 box in the center
+      setState(() {
+        _scanWindowRect = Rect.fromCenter(
+          center: Offset(size.width / 2, size.height / 2),
+          width: size.width * 0.8,
+          height: 150,
+        );
+        _isScanWindowInitialized = true;
       });
-    } catch (e) {
-      print('ERROR in _initializeCamera: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Camera error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
     }
   }
 
-  void _startImageStream() {
-    // Safety checks
-    if (_controller == null || !_controller.value.isInitialized) {
-      print('ERROR: Cannot start image stream - controller not initialized');
+  Future<void> _takePicture() async {
+    if (_controller == null || !_controller!.value.isInitialized || _isProcessing) {
       return;
     }
-    
-    // Prevent multiple streams
-    if (_isStreamRunning) {
-      print('DEBUG: Image stream already running');
-      return;
-    }
-    
-    print('DEBUG: Starting image stream...');
-    
-    try {
-      _controller.startImageStream((CameraImage image) async {
-      if (_isProcessing) return;
-      if (_lastDetectionTime != null &&
-          DateTime.now().difference(_lastDetectionTime!).inSeconds < _cooldownSeconds) {
-        return;
-      }
 
+    setState(() {
       _isProcessing = true;
-      try {
-        final WriteBuffer allBytes = WriteBuffer();
-        for (final Plane plane in image.planes) {
-          allBytes.putUint8List(plane.bytes);
-        }
-        final bytes = allBytes.done().buffer.asUint8List();
-        final InputImage inputImage = InputImage.fromBytes(
-          bytes: bytes,
-          metadata: InputImageMetadata(
-            size: Size(image.width.toDouble(), image.height.toDouble()),
-            rotation: InputImageRotation.rotation0deg,
-            format: InputImageFormatValue.fromRawValue(image.format.raw) ??
-                InputImageFormat.nv21,
-            bytesPerRow: image.planes[0].bytesPerRow,
-          ),
-        );
-
-        await _processImage(inputImage);
-      } catch (e) {
-        debugPrint('Error processing image: $e');
-      } finally {
-        _isProcessing = false;
-      }
     });
-    
-    _isStreamRunning = true;
-    print('DEBUG: Image stream started successfully');
-    
+
+    try {
+      // 1. Capture Image
+      final XFile file = await _controller!.takePicture();
+      
+      // 2. Create Input Image from file
+      final inputImage = InputImage.fromFilePath(file.path);
+      
+      // 3. Process with ML Kit
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      
+      String bestCandidate = "";
+      
+      // 4. Analyze Text
+      for (TextBlock block in recognizedText.blocks) {
+        final String rawText = block.text.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+        // Prioritize a valid plate if found
+        if (PlateValidator.isValidIndianPlate(rawText)) {
+          bestCandidate = rawText;
+          break;
+        }
+        // Fallback: Just take the largest text block if no valid plate found yet
+        if (bestCandidate.isEmpty && rawText.length > 4) {
+          bestCandidate = rawText;
+        }
+      }
+
+      if (mounted) {
+        await _showEditDialog(bestCandidate);
+      }
+
     } catch (e) {
-      print('ERROR in _startImageStream: $e');
-      _isStreamRunning = false;
+      debugPrint("Error taking picture: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Camera stream error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
+          SnackBar(content: Text('Error: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
       }
     }
   }
 
-  Future<void> _processImage(InputImage inputImage) async {
-    try {
-      final recognizedText = await textRecognizer.processImage(inputImage);
-      
-      for (final textBlock in recognizedText.blocks) {
-        for (final line in textBlock.lines) {
-          final plateNumber = line.text.trim().toUpperCase();
-          
-          // Check if it's a valid Indian license plate
-          if (PlateValidator.isValidIndianPlate(plateNumber) && 
-              _lastDetectedPlate != plateNumber) {
-            
-            _lastDetectedPlate = plateNumber;
-            _lastDetectionTime = DateTime.now();
-            debugPrint('ALPR: Detected $plateNumber');
-            
-            // Pause the camera stream
-            await _controller.pausePreview();
-            
-            // Show the confirmation dialog
-            if (mounted) {
-              await _showPlateConfirmationDialog(plateNumber);
-              // Resume the camera after dialog is closed
-              if (mounted) {
-                await _controller.resumePreview();
-              }
-            }
-            
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error in text recognition: $e');
-      if (mounted) {
-        await _controller.resumePreview();
-      }
-    }
-  }
-  
-  Future<void> _showPlateConfirmationDialog(String plateNumber) async {
-    final vehicle = await _databaseHelper.getVehicleByPlate(plateNumber);
-    final isWhitelisted = vehicle != null;
-    final ownerName = vehicle?['owner_name'] ?? 'Unknown';
-    
-    final TextEditingController plateController = TextEditingController(text: plateNumber);
-    
+  Future<void> _showEditDialog(String detectedText) async {
+    // Check if whitelisted using the detected text (if valid)
+    final existingVehicle = PlateValidator.isValidIndianPlate(detectedText) 
+        ? await _databaseHelper.getVehicleByPlate(detectedText) 
+        : null;
+
+    final TextEditingController textController = TextEditingController(text: detectedText);
+    String? ownerName = existingVehicle?['owner_name'];
+    bool isWhitelisted = existingVehicle != null;
+
+    if (!mounted) return;
+
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('Detected License Plate'),
+          title: const Text('Confirm Plate'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
-                controller: plateController,
+                controller: textController,
                 decoration: const InputDecoration(
                   labelText: 'Plate Number',
                   border: OutlineInputBorder(),
                 ),
-                style: const TextStyle(fontSize: 16),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Status: '),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isWhitelisted ? Colors.green[100] : Colors.orange[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      isWhitelisted ? 'WHITELISTED' : 'UNKNOWN',
-                      style: TextStyle(
-                        color: isWhitelisted ? Colors.green[800] : Colors.orange[800],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
+                textCapitalization: TextCapitalization.characters,
               ),
               if (isWhitelisted) ...[
-                const SizedBox(height: 8),
-                Text('Owner: $ownerName'),
-              ],
+                const SizedBox(height: 10),
+                Text(
+                  'Owner: $ownerName',
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                ),
+                const Text('Status: Whitelisted', style: TextStyle(color: Colors.green)),
+              ] else ...[
+                 const SizedBox(height: 10),
+                 const Text('Status: Unknown / Visitor', style: TextStyle(color: Colors.orange)),
+              ]
             ],
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.pop(context);
               },
               child: const Text('CANCEL'),
             ),
             ElevatedButton(
               onPressed: () async {
-                final plateToSave = plateController.text.trim().toUpperCase();
-                if (plateToSave.isNotEmpty) {
-                  await _databaseHelper.logEntry(
-                    plateNumber: plateToSave,
-                    isWhitelisted: isWhitelisted,
-                    ownerName: isWhitelisted ? ownerName : 'Unknown',
-                  );
-                  
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Entry added: $plateToSave'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                }
-                if (mounted) {
-                  Navigator.of(context).pop();
+                final finalPlate = textController.text.trim().toUpperCase();
+                if (finalPlate.isNotEmpty) {
+                   Navigator.pop(context);
+                   await _saveLog(finalPlate);
                 }
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('ADD ENTRY'),
+              child: const Text('CONFIRM'),
             ),
           ],
         );
@@ -285,145 +194,130 @@ class _ScannerPageState extends State<ScannerPage> {
     );
   }
 
+  Future<void> _saveLog(String plateNumber) async {
+    // Re-check database in case user edited the plate number
+    final vehicle = await _databaseHelper.getVehicleByPlate(plateNumber);
+    final isWhitelisted = vehicle != null;
+    final ownerName = vehicle?['owner_name'] ?? 'Unknown';
+
+    await _databaseHelper.logEntry(
+      plateNumber: plateNumber,
+      isWhitelisted: isWhitelisted,
+      ownerName: ownerName,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logged: $plateNumber (${isWhitelisted ? "Whitelisted" : "Visitor"})'),
+          backgroundColor: isWhitelisted ? Colors.green : Colors.orange,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
-    print('DEBUG: Disposing ScannerPage resources');
-    _controller.dispose();
-    textRecognizer.close();
-    print('DEBUG: TextRecognizer disposed');
+    _controller?.dispose();
+    _textRecognizer.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          FutureBuilder<void>(
-            future: _initializeControllerFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.done) {
-                return CameraPreview(_controller);
-              } else {
-                return const Center(child: CircularProgressIndicator());
-              }
-            },
-          ),
-          // Flash overlay
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            color: _flashColor,
-          ),
-          // Manual entry button
-          Positioned(
-            bottom: 30,
-            right: 20,
-            child: FloatingActionButton(
-              onPressed: _showManualEntryDialog,
-              backgroundColor: Colors.blue,
-              child: const Icon(Icons.keyboard_alt_outlined, size: 30),
-            ),
-          ),
-          // Back button
-          Positioned(
-            top: 40,
-            left: 20,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 32),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-        ],
+      appBar: AppBar(title: const Text("Capture & Confirm")),
+      body: FutureBuilder<void>(
+        future: _initializeControllerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done && _controller != null) {
+            WidgetsBinding.instance.addPostFrameCallback(_onLayoutDone);
+            return Stack(
+              children: [
+                // 1. Camera Preview
+                SizedBox.expand(
+                  child: CameraPreview(_controller!, key: _cameraPreviewKey),
+                ),
+                
+                // 2. Viewfinder Overlay
+                if (_isScanWindowInitialized && _scanWindowRect != null)
+                  CustomPaint(
+                    painter: _ScanWindowPainter(
+                      scanWindowRect: _scanWindowRect!,
+                      isPlateDetected: false, // Static viewfinder for capture mode
+                    ),
+                    child: Container(),
+                  ),
+
+                // 3. Shutter Button
+                Positioned(
+                  bottom: 30,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: FloatingActionButton.large(
+                      onPressed: _isProcessing ? null : _takePicture,
+                      backgroundColor: Colors.white,
+                      child: const Icon(Icons.camera_alt, color: Colors.black, size: 40),
+                    ),
+                  ),
+                ),
+
+                // 4. Loading Overlay
+                if (_isProcessing)
+                  Container(
+                    color: Colors.black54,
+                    child: const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ),
+              ],
+            );
+          } else {
+            return const Center(child: CircularProgressIndicator());
+          }
+        },
       ),
     );
   }
+}
 
-  void _showManualEntryDialog() {
-    final TextEditingController controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Enter Plate Number'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              hintText: 'e.g., KA01MG1234',
-              border: OutlineInputBorder(),
-            ),
-            textCapitalization: TextCapitalization.characters,
-            style: const TextStyle(fontSize: 18),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('CANCEL'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final plateNumber = controller.text.trim().toUpperCase();
-                if (plateNumber.isNotEmpty) {
-                  Navigator.of(context).pop();
-                  _processManualEntry(plateNumber);
-                }
-              },
-              child: const Text('SUBMIT'),
-            ),
-          ],
-        );
-      },
+class _ScanWindowPainter extends CustomPainter {
+  final Rect scanWindowRect;
+  final bool isPlateDetected;
+
+  _ScanWindowPainter({
+    required this.scanWindowRect,
+    required this.isPlateDetected,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final backgroundPaint = Paint()..color = Colors.black54;
+    final holePaint = Paint()..blendMode = BlendMode.dstOut;
+
+    canvas.saveLayer(Offset.zero & size, Paint());
+    canvas.drawRect(Offset.zero & size, backgroundPaint);
+    
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(scanWindowRect, const Radius.circular(12)),
+      holePaint,
+    );
+    canvas.restore();
+
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0;
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(scanWindowRect, const Radius.circular(12)),
+      borderPaint,
     );
   }
 
-  Future<void> _processManualEntry(String plateNumber) async {
-    if (!PlateValidator.isValidIndianPlate(plateNumber)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid plate number format. Please use format like KA01MG1234'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final vehicle = await _databaseHelper.getVehicleByPlate(plateNumber);
-    
-    if (!mounted) return;
-    
-    setState(() {
-      _flashColor = vehicle != null ? Colors.green.withOpacity(0.5) : Colors.red.withOpacity(0.5);
-    });
-    
-    // Show plate number and owner (if whitelisted)
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          vehicle != null 
-            ? 'Welcome, ${vehicle['owner_name']}!' 
-            : 'Vehicle not registered: $plateNumber',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: vehicle != null ? Colors.green : Colors.red,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    
-    // Log the entry
-    await _databaseHelper.logEntry(
-      plateNumber: plateNumber,
-      isWhitelisted: vehicle != null,
-      ownerName: vehicle?['owner_name'] ?? 'Unknown',
-    );
-    
-    // Reset flash color after animation
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        setState(() {
-          _flashColor = Colors.transparent;
-        });
-      }
-    });
+  @override
+  bool shouldRepaint(_ScanWindowPainter oldDelegate) {
+    return oldDelegate.scanWindowRect != scanWindowRect;
   }
 }
