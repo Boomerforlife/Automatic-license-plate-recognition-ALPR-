@@ -110,7 +110,7 @@ class _ScannerPageState extends State<ScannerPage> {
       }
 
       if (mounted) {
-        await _showEditDialog(bestCandidate);
+        await _showEditDialog(bestCandidate, file.path);
       }
 
     } catch (e) {
@@ -129,7 +129,7 @@ class _ScannerPageState extends State<ScannerPage> {
     }
   }
 
-  Future<void> _showEditDialog(String detectedText) async {
+  Future<void> _showEditDialog(String detectedText, String imagePath) async {
     // Check if whitelisted using the detected text (if valid)
     final existingVehicle = PlateValidator.isValidIndianPlate(detectedText) 
         ? await _databaseHelper.getVehicleByPlate(detectedText) 
@@ -183,7 +183,7 @@ class _ScannerPageState extends State<ScannerPage> {
                 final finalPlate = textController.text.trim().toUpperCase();
                 if (finalPlate.isNotEmpty) {
                    Navigator.pop(context);
-                   await _saveLog(finalPlate);
+                   await _saveLog(finalPlate, imagePath);
                 }
               },
               child: const Text('CONFIRM'),
@@ -194,7 +194,7 @@ class _ScannerPageState extends State<ScannerPage> {
     );
   }
 
-  Future<void> _saveLog(String plateNumber) async {
+  Future<void> _saveLog(String plateNumber, String photoPath) async {
     // Re-check database in case user edited the plate number
     final vehicle = await _databaseHelper.getVehicleByPlate(plateNumber);
     final isWhitelisted = vehicle != null;
@@ -204,12 +204,13 @@ class _ScannerPageState extends State<ScannerPage> {
       plateNumber: plateNumber,
       isWhitelisted: isWhitelisted,
       ownerName: ownerName,
+      photoPath: photoPath,
     );
-
+    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Logged: $plateNumber (${isWhitelisted ? "Whitelisted" : "Visitor"})'),
+          content: Text('Logged: $plateNumber'),
           backgroundColor: isWhitelisted ? Colors.green : Colors.orange,
         ),
       );

@@ -19,7 +19,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -43,14 +43,16 @@ class DatabaseHelper {
       plate_number TEXT NOT NULL,
       timestamp TEXT NOT NULL,
       status TEXT NOT NULL,
-      owner_name TEXT
+      owner_name TEXT,
+      photo_path TEXT
     )
     ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      // Simple migration: Drop and recreate for development phase
+    if (oldVersion < 3) {
+      // Drop and recreate for development phase or ALTER table if preserving data is critical
+      // For this workflow, dropping is cleaner to ensure schema consistency
       await db.execute('DROP TABLE IF EXISTS entry_logs');
       await db.execute('''
       CREATE TABLE entry_logs (
@@ -58,7 +60,8 @@ class DatabaseHelper {
         plate_number TEXT NOT NULL,
         timestamp TEXT NOT NULL,
         status TEXT NOT NULL,
-        owner_name TEXT
+        owner_name TEXT,
+        photo_path TEXT
       )
       ''');
     }
@@ -80,6 +83,7 @@ class DatabaseHelper {
     required String plateNumber,
     required bool isWhitelisted,
     String ownerName = 'Unknown',
+    String? photoPath,
   }) async {
     final db = await instance.database;
     print('ALPR: Detected $plateNumber (Whitelisted: $isWhitelisted)');
@@ -88,6 +92,7 @@ class DatabaseHelper {
       'timestamp': DateTime.now().toIso8601String(),
       'status': isWhitelisted ? 'whitelisted' : 'not_whitelisted',
       'owner_name': isWhitelisted ? ownerName : 'Unknown',
+      'photo_path': photoPath,
     });
   }
 
