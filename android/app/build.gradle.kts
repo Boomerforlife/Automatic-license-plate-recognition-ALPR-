@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.vibes"
+    namespace = "com.security.alpr"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.vibes"
+        applicationId = "com.security.alpr"
         minSdk = flutter.minSdkVersion
         targetSdk = 34
         versionCode = flutter.versionCode?.toInt() ?: 1

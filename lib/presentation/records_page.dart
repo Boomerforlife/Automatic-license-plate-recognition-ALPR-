@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:vibes/data/database_helper.dart';
+import 'package:alpr/data/database_helper.dart';
 
 class RecordsPage extends StatefulWidget {
   const RecordsPage({super.key});

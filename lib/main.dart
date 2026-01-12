@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:vibes/data/database_helper.dart';
-import 'package:vibes/presentation/home_page.dart';
-import 'package:vibes/presentation/scanner_page.dart';
-import 'package:vibes/presentation/records_page.dart';
+import 'package:alpr/data/database_helper.dart';
+import 'package:alpr/presentation/home_page.dart';
+import 'package:alpr/presentation/scanner_page.dart';
+import 'package:alpr/presentation/records_page.dart';
 
 import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';

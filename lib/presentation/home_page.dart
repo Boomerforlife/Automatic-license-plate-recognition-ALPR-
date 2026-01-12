@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:vibes/data/excel_service.dart';
+import 'package:alpr/data/excel_service.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});

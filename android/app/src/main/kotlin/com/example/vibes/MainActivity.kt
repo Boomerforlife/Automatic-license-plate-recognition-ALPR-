@@ -1,4 +1,4 @@
-package com.example.vibes
+package com.security.alpr
 
 import io.flutter.embedding.android.FlutterActivity
 
