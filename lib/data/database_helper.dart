@@ -137,4 +137,8 @@ class DatabaseHelper {
     final db = await instance.database;
     return await db.query('entry_logs', orderBy: 'timestamp DESC');
   }
+  Future<void> clearAllLogs() async {
+    final db = await instance.database;
+    await db.delete('entry_logs');
+  }
 }

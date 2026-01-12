@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'dart:io';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../data/database_helper.dart';
 import '../utils/plate_validator.dart';
 
@@ -87,17 +90,26 @@ class _ScannerPageState extends State<ScannerPage> {
       // 1. Capture Image
       final XFile file = await _controller!.takePicture();
       
-      // 2. Create Input Image from file
-      final inputImage = InputImage.fromFilePath(file.path);
+      // 2. Save to Persistent Storage
+      final directory = await getApplicationDocumentsDirectory();
+      final String fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String persistentPath = path.join(directory.path, fileName);
       
-      // 3. Process with ML Kit
+      await File(file.path).copy(persistentPath);
+
+      // 3. Create Input Image from persistent file
+      final inputImage = InputImage.fromFilePath(persistentPath);
+      
+      // 4. Process with ML Kit
       final recognizedText = await _textRecognizer.processImage(inputImage);
       
       String bestCandidate = "";
       
-      // 4. Analyze Text
+      // 5. Analyze Text
       for (TextBlock block in recognizedText.blocks) {
-        final String rawText = block.text.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+        // Strict Regex Sanitization: Remove everything except A-Z, 0-9
+        final String rawText = block.text.toUpperCase().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+        
         // Prioritize a valid plate if found
         if (PlateValidator.isValidIndianPlate(rawText)) {
           bestCandidate = rawText;
@@ -110,7 +122,7 @@ class _ScannerPageState extends State<ScannerPage> {
       }
 
       if (mounted) {
-        await _showEditDialog(bestCandidate, file.path);
+        await _showEditDialog(bestCandidate, persistentPath);
       }
 
     } catch (e) {
@@ -130,14 +142,15 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   Future<void> _showEditDialog(String detectedText, String imagePath) async {
-    // Check if whitelisted using the detected text (if valid)
-    final existingVehicle = PlateValidator.isValidIndianPlate(detectedText) 
+    final TextEditingController textController = TextEditingController(text: detectedText);
+     
+    // Initial Check
+    Map<String, dynamic>? vehicle = detectedText.isNotEmpty 
         ? await _databaseHelper.getVehicleByPlate(detectedText) 
         : null;
-
-    final TextEditingController textController = TextEditingController(text: detectedText);
-    String? ownerName = existingVehicle?['owner_name'];
-    bool isWhitelisted = existingVehicle != null;
+        
+    String? ownerName = vehicle?['owner_name'];
+    bool isWhitelisted = vehicle != null;
 
     if (!mounted) return;
 
@@ -145,50 +158,89 @@ class _ScannerPageState extends State<ScannerPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Confirm Plate'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: textController,
-                decoration: const InputDecoration(
-                  labelText: 'Plate Number',
-                  border: OutlineInputBorder(),
-                ),
-                textCapitalization: TextCapitalization.characters,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Confirm Plate'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: textController,
+                    decoration: const InputDecoration(
+                      labelText: 'Plate Number',
+                      border: OutlineInputBorder(),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                    ],
+                    onChanged: (value) async {
+                      if (value.isNotEmpty) {
+                        final v = await _databaseHelper.getVehicleByPlate(value.toUpperCase());
+                        setState(() {
+                          vehicle = v;
+                          ownerName = v?['owner_name'];
+                          isWhitelisted = v != null;
+                        });
+                      } else {
+                         setState(() {
+                          isWhitelisted = false;
+                          ownerName = null;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  if (isWhitelisted) ...[
+                    Text(
+                      'Owner: $ownerName',
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.green),
+                      ),
+                      child: const Text('WHITELISTED', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    ),
+                  ] else ...[
+                     const SizedBox(height: 5),
+                     Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.orange),
+                      ),
+                      child: const Text('UNKNOWN / VISITOR', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                    ),
+                  ]
+                ],
               ),
-              if (isWhitelisted) ...[
-                const SizedBox(height: 10),
-                Text(
-                  'Owner: $ownerName',
-                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('CANCEL'),
                 ),
-                const Text('Status: Whitelisted', style: TextStyle(color: Colors.green)),
-              ] else ...[
-                 const SizedBox(height: 10),
-                 const Text('Status: Unknown / Visitor', style: TextStyle(color: Colors.orange)),
-              ]
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('CANCEL'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final finalPlate = textController.text.trim().toUpperCase();
-                if (finalPlate.isNotEmpty) {
-                   Navigator.pop(context);
-                   await _saveLog(finalPlate, imagePath);
-                }
-              },
-              child: const Text('CONFIRM'),
-            ),
-          ],
+                ElevatedButton(
+                  onPressed: () async {
+                    final finalPlate = textController.text.trim().toUpperCase();
+                    if (finalPlate.isNotEmpty) {
+                       Navigator.pop(context);
+                       await _saveLog(finalPlate, imagePath);
+                    }
+                  },
+                  child: const Text('CONFIRM'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

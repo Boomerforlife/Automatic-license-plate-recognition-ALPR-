@@ -21,10 +21,42 @@ class _RecordsPageState extends State<RecordsPage> {
 
   Future<void> _fetchLogs() async {
     final logs = await _dbHelper.getAllLogs();
-    setState(() {
-      _logs = logs;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _logs = logs;
+        _isLoading = false;
+      });
+    }
+  }
+  
+  Future<void> _clearLogs() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Records?'),
+        content: const Text('This will delete all entry logs permanently. This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCEL'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('CLEAR ALL', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _dbHelper.clearAllLogs();
+      await _fetchLogs();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('New set started! All records cleared.')),
+        );
+      }
+    }
   }
 
   @override
@@ -32,6 +64,13 @@ class _RecordsPageState extends State<RecordsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Entry Records'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'Clear All',
+            onPressed: _logs.isEmpty ? null : _clearLogs,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
