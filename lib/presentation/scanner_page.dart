@@ -43,11 +43,24 @@ class _ScannerPageState extends State<ScannerPage> {
       cameras.first,
       ResolutionPreset.medium,
       enableAudio: false,
+      imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.jpeg : ImageFormatGroup.bgra8888, 
     );
 
     try {
       _initializeControllerFuture = _controller!.initialize();
       await _initializeControllerFuture;
+      
+      // Auto-Focus Check
+      try {
+        await _controller!.setFocusMode(FocusMode.auto);
+      } catch (e) {
+        if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+             const SnackBar(content: Text('Warning: Auto-Focus not supported on this device. OCR accuracy may be affected.'), duration: Duration(seconds: 4)),
+           );
+        }
+      }
+
       if (mounted) {
         setState(() {});
       }
@@ -65,11 +78,13 @@ class _ScannerPageState extends State<ScannerPage> {
     final renderBox = _cameraPreviewKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox != null && !_isScanWindowInitialized) {
       final size = renderBox.size;
-      // Define a 250x150 box in the center
+      // Define a 250x150 box in the center, adaptable to screen width
+      final double width = size.width * 0.8 > 300 ? 300 : size.width * 0.8;
+      
       setState(() {
         _scanWindowRect = Rect.fromCenter(
           center: Offset(size.width / 2, size.height / 2),
-          width: size.width * 0.8,
+          width: width,
           height: 150,
         );
         _isScanWindowInitialized = true;
@@ -270,13 +285,6 @@ class _ScannerPageState extends State<ScannerPage> {
   }
 
   @override
-  void dispose() {
-    _controller?.dispose();
-    _textRecognizer.close();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Capture & Confirm")),
@@ -285,46 +293,50 @@ class _ScannerPageState extends State<ScannerPage> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done && _controller != null) {
             WidgetsBinding.instance.addPostFrameCallback(_onLayoutDone);
-            return Stack(
-              children: [
-                // 1. Camera Preview
-                SizedBox.expand(
-                  child: CameraPreview(_controller!, key: _cameraPreviewKey),
-                ),
-                
-                // 2. Viewfinder Overlay
-                if (_isScanWindowInitialized && _scanWindowRect != null)
-                  CustomPaint(
-                    painter: _ScanWindowPainter(
-                      scanWindowRect: _scanWindowRect!,
-                      isPlateDetected: false, // Static viewfinder for capture mode
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    // 1. Camera Preview
+                    SizedBox.expand(
+                      child: CameraPreview(_controller!, key: _cameraPreviewKey),
                     ),
-                    child: Container(),
-                  ),
+                    
+                    // 2. Viewfinder Overlay
+                    if (_isScanWindowInitialized && _scanWindowRect != null)
+                      CustomPaint(
+                        painter: _ScanWindowPainter(
+                          scanWindowRect: _scanWindowRect!,
+                          isPlateDetected: false,
+                        ),
+                        child: Container(),
+                      ),
 
-                // 3. Shutter Button
-                Positioned(
-                  bottom: 30,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: FloatingActionButton.large(
-                      onPressed: _isProcessing ? null : _takePicture,
-                      backgroundColor: Colors.white,
-                      child: const Icon(Icons.camera_alt, color: Colors.black, size: 40),
+                    // 3. Shutter Button (Adaptive Positioning)
+                    Positioned(
+                      bottom: constraints.maxHeight * 0.05, // 5% from bottom
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: FloatingActionButton.large(
+                          onPressed: _isProcessing ? null : _takePicture,
+                          backgroundColor: Colors.white,
+                          child: const Icon(Icons.camera_alt, color: Colors.black, size: 40),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
 
-                // 4. Loading Overlay
-                if (_isProcessing)
-                  Container(
-                    color: Colors.black54,
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  ),
-              ],
+                    // 4. Loading Overlay
+                    if (_isProcessing)
+                      Container(
+                        color: Colors.black54,
+                        child: const Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                  ],
+                );
+              }
             );
           } else {
             return const Center(child: CircularProgressIndicator());

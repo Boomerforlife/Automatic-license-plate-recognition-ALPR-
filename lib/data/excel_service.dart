@@ -22,6 +22,11 @@ class ExcelService {
 
       if (result != null) {
         File file = File(result.files.single.path!);
+        
+        if (!file.path.endsWith('.xlsx')) {
+          return 'Invalid File Format. Please select a .xlsx file.';
+        }
+
         var bytes = file.readAsBytesSync();
         var excel = Excel.decodeBytes(bytes);
 
@@ -107,17 +112,17 @@ class ExcelService {
         sheet.getRangeByIndex(rowIndex, 4).setText(log['status']);
       }
 
-      // Save to Downloads/Vibes_Reports/
+      // Save to Downloads/Vibes_Security_Logs/
       final List<int> bytes = workbook.saveAsStream();
       workbook.dispose();
 
       Directory? directory;
       if (Platform.isAndroid) {
-        directory = Directory('/storage/emulated/0/Download/Vibes_Reports');
+        directory = Directory('/storage/emulated/0/Download/Vibes_Security_Logs');
       } else {
         final downloads = await getDownloadsDirectory();
         if (downloads != null) {
-           directory = Directory(join(downloads.path, 'Vibes_Reports'));
+           directory = Directory(join(downloads.path, 'Vibes_Security_Logs'));
         }
       }
 
@@ -135,7 +140,7 @@ class ExcelService {
           ..createSync(recursive: true)
           ..writeAsBytesSync(bytes);
           
-        return 'Report saved: Vibes_Reports/$fileName';
+        return 'Report saved: Vibes_Security_Logs/$fileName';
       } else {
         return 'Could not access storage directory.';
       }
