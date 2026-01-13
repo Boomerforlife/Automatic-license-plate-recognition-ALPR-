@@ -23,17 +23,25 @@ val newBuildDir: Directory =
         .get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 
-subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
-
-subprojects {
-    project.evaluationDependsOn(":app")
-}
-
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 
-// subprojects block removed to prevent "Too late to set compileSdk" error
+subprojects {
+    afterEvaluate {
+        val project = this
+        if (project.extensions.findByName("android") != null) {
+            configure<com.android.build.gradle.BaseExtension> {
+                // Point to API 36 (Baklava)
+                compileSdkVersion(36)
+                buildToolsVersion("36.0.0")
+
+                // This fixes the "source value 8 is obsolete" warnings
+                compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_17
+                    targetCompatibility = JavaVersion.VERSION_17
+                }
+            }
+        }
+    }
+}

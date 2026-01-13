@@ -5,9 +5,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Force specific versions to resolve lStar crash
+// Force specific versions to resolve lStar crash
+configurations.all {
+    resolutionStrategy {
+        force("androidx.core:core:1.12.0")
+        force("androidx.core:core-ktx:1.12.0")
+    }
+}
+
 android {
     namespace = "com.security.alpr"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -22,22 +31,14 @@ android {
     defaultConfig {
         applicationId = "com.security.alpr"
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
+        targetSdk = 36
         versionCode = flutter.versionCode?.toInt() ?: 1
         versionName = flutter.versionName ?: "1.0.0"
         multiDexEnabled = true
-        
-        // ndk {
-        //     abiFilters += listOf("armeabi-v7a", "arm64-v8a")
-        // }
     }
-    
-    // Force specific versions to resolve lStar crash
-    configurations.all {
-        resolutionStrategy {
-            force("androidx.core:core-remoteviews:1.0.0-rc01")
-            force("androidx.core:core:1.9.0") 
-        }
+
+    dependencies {
+        implementation(platform("androidx.compose:compose-bom:2024.10.00"))
     }
 
     buildTypes {
@@ -45,6 +46,9 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Disable R8 shrinking to avoid "Missing classes" errors for initial release
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
