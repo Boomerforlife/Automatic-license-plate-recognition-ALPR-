@@ -35,3 +35,5 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
+
+// subprojects block removed to prevent "Too late to set compileSdk" error

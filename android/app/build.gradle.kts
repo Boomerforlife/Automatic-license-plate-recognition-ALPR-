@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.security.alpr"
-    compileSdk = 36
+    compileSdk = 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -27,8 +27,16 @@ android {
         versionName = flutter.versionName ?: "1.0.0"
         multiDexEnabled = true
         
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        // ndk {
+        //     abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        // }
+    }
+    
+    // Force specific versions to resolve lStar crash
+    configurations.all {
+        resolutionStrategy {
+            force("androidx.core:core-remoteviews:1.0.0-rc01")
+            force("androidx.core:core:1.9.0") 
         }
     }
 
@@ -37,6 +45,7 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
