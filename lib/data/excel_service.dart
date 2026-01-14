@@ -5,7 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path/path.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 import 'database_helper.dart';
 
@@ -77,7 +76,7 @@ class ExcelService {
       sheet.name = 'Vibes Report';
 
       // 1. Headers (Simplified: No Photo)
-      final List<String> headers = ['S.No', 'Plate Number', 'Timestamp', 'Status'];
+      final List<String> headers = ['S.No', 'Plate Number', 'Timestamp', 'Status', 'Details'];
       for (int i = 0; i < headers.length; i++) {
         final xlsio.Range cell = sheet.getRangeByIndex(1, i + 1);
         cell.setText(headers[i]);
@@ -89,6 +88,7 @@ class ExcelService {
       sheet.getRangeByIndex(1, 2).columnWidth = 20; // Plate
       sheet.getRangeByIndex(1, 3).columnWidth = 20; // Timestamp (formerly Date/Time split)
       sheet.getRangeByIndex(1, 4).columnWidth = 20; // Status
+      sheet.getRangeByIndex(1, 5).columnWidth = 30; // Details
 
       // 2. Add Data (No Photos)
       for (int i = 0; i < logs.length; i++) {
@@ -109,7 +109,17 @@ class ExcelService {
         sheet.getRangeByIndex(rowIndex, 3).setText(timestampStr);
         
         // Status
-        sheet.getRangeByIndex(rowIndex, 4).setText(log['status']);
+        String status = log['status'] ?? '';
+        sheet.getRangeByIndex(rowIndex, 4).setText(status);
+
+        // Details Logic
+        String detailsText;
+        if (status.toLowerCase().contains('whitelisted') && !status.toLowerCase().contains('not')) {
+             detailsText = log['owner_name'] ?? 'Unknown';
+        } else {
+             detailsText = 'Data yet to be filled';
+        }
+        sheet.getRangeByIndex(rowIndex, 5).setText(detailsText);
       }
 
       // Save to Downloads/Vibes_Security_Logs/

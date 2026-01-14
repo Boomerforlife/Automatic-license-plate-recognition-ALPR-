@@ -19,7 +19,6 @@ dependencies:
   path_provider: ^2.1.1
   permission_handler: ^11.0.1
   syncfusion_flutter_xlsio: ^28.1.33
-  flutter_image_compress: ^2.1.0
   
   # State Management
   provider: ^6.1.1

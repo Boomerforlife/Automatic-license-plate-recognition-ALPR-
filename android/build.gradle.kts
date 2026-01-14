@@ -32,15 +32,18 @@ subprojects {
         val project = this
         if (project.extensions.findByName("android") != null) {
             configure<com.android.build.gradle.BaseExtension> {
-                // Point to API 36 (Baklava)
                 compileSdkVersion(36)
                 buildToolsVersion("36.0.0")
 
-                // This fixes the "source value 8 is obsolete" warnings
                 compileOptions {
                     sourceCompatibility = JavaVersion.VERSION_17
                     targetCompatibility = JavaVersion.VERSION_17
                 }
+            }
+        }
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            kotlinOptions {
+                jvmTarget = "17"
             }
         }
     }

@@ -1,3 +1,6 @@
+// This line forces Gradle to put the APK where Flutter expects it
+project.layout.buildDirectory.set(file("${rootDir}/../build/app"))
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -9,8 +12,8 @@ plugins {
 // Force specific versions to resolve lStar crash
 configurations.all {
     resolutionStrategy {
-        force("androidx.core:core:1.12.0")
-        force("androidx.core:core-ktx:1.12.0")
+        force("androidx.core:core:1.13.1")
+        force("androidx.core:core-ktx:1.13.1")
     }
 }
 
@@ -38,7 +41,7 @@ android {
     }
 
     dependencies {
-        implementation(platform("androidx.compose:compose-bom:2024.10.00"))
+        implementation("androidx.core:core-ktx:1.13.1")
     }
 
     buildTypes {
