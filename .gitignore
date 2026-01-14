@@ -8,7 +8,8 @@
 .buildlog/
 .history
 .svn/
-
+ 
+ 
 # IntelliJ / Android Studio
 .idea/
 *.iml
